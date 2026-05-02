@@ -5,8 +5,6 @@ services:
     container_name: browser-renderer
     restart: always
     ports:
-      # Bind to all interfaces; lock down via Ploi/UFW + token auth.
-      # If using a reverse proxy on the same host, change to "127.0.0.1:3000:3000".
       - "3000:3000"
     env_file: .env
     environment:
@@ -29,4 +27,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 28G
+          memory: 6G
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    network_mode: host
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - render

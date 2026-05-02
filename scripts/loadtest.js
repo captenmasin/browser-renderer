@@ -17,7 +17,7 @@ const RENDER_TOKEN = process.env.RENDER_TOKEN || '';
 const TARGET_URL = process.env.TARGET_URL || 'https://example.com';
 const DURATION = parseInt(process.env.DURATION || '30');
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || '10');
-const WAIT_UNTIL = process.env.WAIT_UNTIL || 'networkidle0';
+const WAIT_UNTIL = process.env.WAIT_UNTIL || 'networkidle2';
 const TIMEOUT_SEC = parseInt(process.env.TIMEOUT_SEC || '60');
 
 const headers = {

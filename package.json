@@ -1,0 +1,5 @@
+{
+  "name": "sitepulse-render",
+  "type": "module",
+  "dependencies": { "express": "^4", "puppeteer": "^23" }
+}

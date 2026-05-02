@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer';
 
 const PORT = 3000;
 const TOKEN = process.env.RENDER_TOKEN;
-const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '40');
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '35');
 const NAV_TIMEOUT_MS = parseInt(process.env.NAV_TIMEOUT_MS || '30000');
 const PAGE_CONTENT_TIMEOUT_MS = 5_000;
 const BROWSER_MAX_RENDERS = parseInt(process.env.BROWSER_MAX_RENDERS || '1000');
@@ -79,7 +79,7 @@ app.post('/content', async (req, res) => {
   if (active >= MAX_CONCURRENT) {
     return res.status(503).json({ error: 'overloaded', retryAfter: 1 });
   }
-  const { url, waitUntil = 'networkidle0', timeout = NAV_TIMEOUT_MS, userAgent } = req.body || {};
+  const { url, waitUntil = 'networkidle2', timeout = NAV_TIMEOUT_MS, userAgent } = req.body || {};
   if (!url) return res.status(400).json({ error: 'url required' });
 
   active++;

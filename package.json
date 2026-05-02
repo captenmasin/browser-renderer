@@ -1,5 +1,17 @@
 {
-  "name": "sitepulse-render",
+  "name": "browser-renderer",
+  "version": "1.0.0",
   "type": "module",
-  "dependencies": { "express": "^4", "puppeteer": "^23" }
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "loadtest": "node scripts/loadtest.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "puppeteer": "^23.11.1"
+  },
+  "devDependencies": {
+    "autocannon": "^7.15.0"
+  }
 }

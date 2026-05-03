@@ -27,7 +27,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 6G
+          memory: 7G
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared

@@ -5,11 +5,15 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "loadtest": "node scripts/loadtest.js"
+    "loadtest": "node scripts/loadtest.js",
+    "test": "node --test",
+    "smoke:lambda": "node scripts/smoke-lambda.js"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
     "express": "^4.21.2",
-    "puppeteer": "^23.11.1"
+    "puppeteer": "^23.11.1",
+    "puppeteer-core": "^25.1.0"
   },
   "devDependencies": {
     "autocannon": "^7.15.0"

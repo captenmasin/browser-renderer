@@ -1,0 +1,12 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "sitepulse-browser-renderer"
+resolve_s3 = true
+s3_prefix = "sitepulse-browser-renderer"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+resolve_image_repos = true
+
+[default.global.parameters]
+region = "us-east-1"

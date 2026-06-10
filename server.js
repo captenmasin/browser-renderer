@@ -4,31 +4,53 @@ import puppeteer from 'puppeteer';
 
 const PORT = 3000;
 const TOKEN = process.env.RENDER_TOKEN;
-const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '35');
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '40');
 const NAV_TIMEOUT_MS = parseInt(process.env.NAV_TIMEOUT_MS || '30000');
 const PAGE_CONTENT_TIMEOUT_MS = 5_000;
 const BROWSER_MAX_RENDERS = parseInt(process.env.BROWSER_MAX_RENDERS || '1000');
 const BROWSER_MAX_AGE_MS = parseInt(process.env.BROWSER_MAX_AGE_MS || `${60 * 60 * 1000}`);
+const DEFAULT_WAIT_UNTIL = 'networkidle2';
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet']);
 
 let browser;
 let browserStartedAt = 0;
 let browserRenders = 0;
 let active = 0;
+let browserUsers = 0;
 let shuttingDown = false;
-let recycling = false;
+let browserLaunchPromise;
 
 async function getBrowser() {
   const tooOld = browserStartedAt > 0 && (Date.now() - browserStartedAt > BROWSER_MAX_AGE_MS);
   const tooManyRenders = browserRenders >= BROWSER_MAX_RENDERS;
 
-  if (browser?.connected && !tooOld && !tooManyRenders) return browser;
+  if (browser?.connected && !tooOld && !tooManyRenders && !browserLaunchPromise) {
+    return leaseBrowser(browser);
+  }
 
-  // Recycle: don't tear down while requests in flight
-  if (browser && !recycling && (tooOld || tooManyRenders)) {
-    recycling = true;
-    while (active > 0) {
-      await new Promise(r => setTimeout(r, 100));
-    }
+  if (!browserLaunchPromise) {
+    browserLaunchPromise = launchBrowser().finally(() => {
+      browserLaunchPromise = undefined;
+    });
+  }
+
+  return leaseBrowser(await browserLaunchPromise);
+}
+
+function leaseBrowser(activeBrowser) {
+  browserUsers++;
+
+  return {
+    browser: activeBrowser,
+    release() {
+      browserUsers--;
+    },
+  };
+}
+
+async function launchBrowser() {
+  while (browser && browserUsers > 0) {
+    await new Promise(r => setTimeout(r, 100));
   }
 
   if (browser) {
@@ -54,7 +76,6 @@ async function getBrowser() {
   });
   browserStartedAt = Date.now();
   browserRenders = 0;
-  recycling = false;
   return browser;
 }
 
@@ -66,6 +87,7 @@ app.get('/healthz', async (_, res) => {
   res.status(alive ? 200 : 503).json({
     ok: alive,
     active,
+    browserUsers,
     renders: browserRenders,
     uptimeMs: browser ? Date.now() - browserStartedAt : 0,
   });
@@ -79,35 +101,40 @@ app.post('/content', async (req, res) => {
   if (active >= MAX_CONCURRENT) {
     return res.status(503).json({ error: 'overloaded', retryAfter: 1 });
   }
-  const { url, waitUntil = 'networkidle2', timeout = NAV_TIMEOUT_MS, userAgent } = req.body || {};
-  if (!url) return res.status(400).json({ error: 'url required' });
+  const { url, waitUntil = DEFAULT_WAIT_UNTIL, timeout = NAV_TIMEOUT_MS, userAgent } = req.body || {};
+  const validatedUrl = validateUrl(url);
+  if (!validatedUrl.ok) return res.status(400).json({ error: validatedUrl.error });
 
   active++;
-  browserRenders++;
   let page;
+  let browserLease;
   try {
-    const b = await getBrowser();
+    browserLease = await getBrowser();
+    const b = browserLease.browser;
     page = await b.newPage();
+    browserRenders++;
     if (userAgent) await page.setUserAgent(userAgent);
 
     await page.setRequestInterception(true);
     page.on('request', r => {
       try {
-        const t = r.resourceType();
-        if (t === 'image' || t === 'media' || t === 'font' || t === 'stylesheet') {
+        if (BLOCKED_RESOURCE_TYPES.has(r.resourceType())) {
           return r.abort();
         }
         r.continue();
       } catch { /* request already handled */ }
     });
 
-    await page.goto(url, { waitUntil, timeout });
+    await page.goto(validatedUrl.url, { waitUntil, timeout: normalizeTimeout(timeout) });
     const content = await page.content({ timeout: PAGE_CONTENT_TIMEOUT_MS });
     res.json({ content });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   } finally {
-    if (page) { try { await page.close(); } catch {} }
+    if (page) {
+      try { await page.close(); } catch {}
+    }
+    if (browserLease) browserLease.release();
     active--;
   }
 });
@@ -127,3 +154,31 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 app.listen(PORT, '0.0.0.0', () => console.log(`render up on :${PORT}`));
+
+function validateUrl(url) {
+  if (typeof url !== 'string' || url.trim() === '') {
+    return { ok: false, error: 'url required' };
+  }
+
+  try {
+    const parsed = new URL(url);
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { ok: false, error: 'unsupported url protocol' };
+    }
+
+    return { ok: true, url: parsed.toString() };
+  } catch {
+    return { ok: false, error: 'invalid url' };
+  }
+}
+
+function normalizeTimeout(timeout) {
+  const parsed = Number.parseInt(timeout, 10);
+
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    return NAV_TIMEOUT_MS;
+  }
+
+  return Math.min(parsed, 60_000);
+}

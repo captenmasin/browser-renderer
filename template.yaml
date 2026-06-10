@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SitePulse Lambda browser renderer
+
+Globals:
+  Function:
+    Timeout: 75
+    MemorySize: 2048
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        NODE_ENV: production
+        NAV_TIMEOUT_MS: '30000'
+        MAX_RESPONSE_BYTES: '5500000'
+        BROWSER_MAX_RENDERS: '100'
+        BROWSER_MAX_AGE_MS: '1800000'
+
+Parameters:
+  RenderToken:
+    Type: String
+    NoEcho: true
+    Description: Bearer token required by the renderer.
+
+Resources:
+  BrowserRendererFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      EphemeralStorage:
+        Size: 1024
+      Environment:
+        Variables:
+          RENDER_TOKEN: !Ref RenderToken
+      FunctionUrlConfig:
+        AuthType: NONE
+      ImageConfig:
+        Command:
+          - lambda/handler.handler
+    Metadata:
+      Dockerfile: Dockerfile.lambda
+      DockerContext: .
+      DockerTag: nodejs22-v1
+
+Outputs:
+  BrowserRendererUrl:
+    Description: Use this value for BROWSER_RENDERER_URL in SitePulse.
+    Value: !GetAtt BrowserRendererFunctionUrl.FunctionUrl

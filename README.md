@@ -121,8 +121,8 @@ Watch:
 The Lambda deployment is tuned for the kind of AWS credits where speed matters more
 than squeezing every cent:
 
-- `FunctionMemorySize=4096` by default. Lambda allocates CPU with memory, so Chromium
-  usually navigates and serializes faster at 4 GB than at 2 GB.
+- `FunctionMemorySize=3008` by default. Lambda allocates CPU with memory, so Chromium
+  usually navigates and serializes faster near 3 GB than at 2 GB.
 - `ProvisionedConcurrentExecutions=0` by default. At low volume this avoids a
   steady monthly warm-capacity charge; set it to `1` only if first-render latency
   matters.
@@ -137,17 +137,16 @@ Deploy a faster baseline:
 sam deploy \
   --parameter-overrides \
     RenderToken="$RENDER_TOKEN" \
-    FunctionMemorySize=4096 \
+    FunctionMemorySize=3008 \
     ProvisionedConcurrentExecutions=0 \
     BrowserMaxRenders=250 \
     BrowserMaxAgeMs=3600000
 ```
 
 For user-facing checks where cold starts are painful, try
-`ProvisionedConcurrentExecutions=1`. For bursty checks, try `2` or `3`. If
-p95/p99 latency is still high, test `FunctionMemorySize=6144` before adding more
-warm concurrency. Provisioned concurrency is the one setting here that creates a
-steady hourly cost, so keep it at `0` for low-volume background rendering.
+`ProvisionedConcurrentExecutions=1`. For bursty checks, try `2` or `3`.
+Provisioned concurrency is the one setting here that creates a steady hourly
+cost, so keep it at `0` for low-volume background rendering.
 
 Quick comparison loop against the Lambda Function URL:
 

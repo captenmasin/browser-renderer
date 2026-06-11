@@ -19,9 +19,9 @@ Parameters:
     Description: Bearer token required by the renderer.
   FunctionMemorySize:
     Type: Number
-    Default: 4096
+    Default: 3008
     MinValue: 2048
-    MaxValue: 10240
+    MaxValue: 3008
     Description: Lambda memory in MB. More memory gives Chromium more CPU and usually lowers render latency.
   FunctionTimeout:
     Type: Number

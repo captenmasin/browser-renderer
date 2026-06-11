@@ -4,8 +4,6 @@ Description: SitePulse Lambda browser renderer
 
 Globals:
   Function:
-    Timeout: 75
-    MemorySize: 2048
     Architectures:
       - x86_64
     Environment:
@@ -13,25 +11,68 @@ Globals:
         NODE_ENV: production
         NAV_TIMEOUT_MS: '30000'
         MAX_RESPONSE_BYTES: '5500000'
-        BROWSER_MAX_RENDERS: '100'
-        BROWSER_MAX_AGE_MS: '1800000'
 
 Parameters:
   RenderToken:
     Type: String
     NoEcho: true
     Description: Bearer token required by the renderer.
+  FunctionMemorySize:
+    Type: Number
+    Default: 4096
+    MinValue: 2048
+    MaxValue: 10240
+    Description: Lambda memory in MB. More memory gives Chromium more CPU and usually lowers render latency.
+  FunctionTimeout:
+    Type: Number
+    Default: 75
+    MinValue: 30
+    MaxValue: 900
+    Description: Lambda timeout in seconds.
+  ProvisionedConcurrentExecutions:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 20
+    Description: Warm Lambda environments to keep ready. Set to 0 to disable provisioned concurrency.
+  BrowserMaxRenders:
+    Type: Number
+    Default: 250
+    MinValue: 1
+    MaxValue: 5000
+    Description: Recycle each warm Chromium process after this many renders.
+  BrowserMaxAgeMs:
+    Type: Number
+    Default: 3600000
+    MinValue: 60000
+    MaxValue: 21600000
+    Description: Recycle each warm Chromium process after this many milliseconds.
+
+Conditions:
+  UseProvisionedConcurrency: !Not
+    - !Equals
+      - !Ref ProvisionedConcurrentExecutions
+      - 0
 
 Resources:
   BrowserRendererFunction:
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
+      MemorySize: !Ref FunctionMemorySize
+      Timeout: !Ref FunctionTimeout
+      AutoPublishAlias: live
+      ProvisionedConcurrencyConfig: !If
+        - UseProvisionedConcurrency
+        - ProvisionedConcurrentExecutions: !Ref ProvisionedConcurrentExecutions
+        - !Ref AWS::NoValue
       EphemeralStorage:
-        Size: 1024
+        Size: 2048
       Environment:
         Variables:
           RENDER_TOKEN: !Ref RenderToken
+          BROWSER_MAX_RENDERS: !Ref BrowserMaxRenders
+          BROWSER_MAX_AGE_MS: !Ref BrowserMaxAgeMs
       FunctionUrlConfig:
         AuthType: NONE
       ImageConfig:

@@ -22,6 +22,14 @@ const LIGHTHOUSE_DESKTOP_SETTINGS = {
     mobile: false,
     width: 1350,
   },
+  throttling: {
+    cpuSlowdownMultiplier: 1,
+    downloadThroughputKbps: 0,
+    requestLatencyMs: 0,
+    rttMs: 0,
+    throughputKbps: 0,
+    uploadThroughputKbps: 0,
+  },
   throttlingMethod: 'provided',
 };
 const DEFAULT_VIEWPORT = {

@@ -7,7 +7,7 @@ s3_prefix = "sitepulse-browser-renderer"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 resolve_image_repos = true
-parameter_overrides = "FunctionMemorySize=\"3008\" FunctionTimeout=\"75\" ProvisionedConcurrentExecutions=\"0\" BrowserMaxRenders=\"250\" BrowserMaxAgeMs=\"3600000\""
+parameter_overrides = "FunctionMemorySize=\"3008\" FunctionTimeout=\"150\" ProvisionedConcurrentExecutions=\"0\" BrowserMaxRenders=\"250\" BrowserMaxAgeMs=\"3600000\""
 
 [default.global.parameters]
 region = "us-east-1"

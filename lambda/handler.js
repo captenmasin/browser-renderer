@@ -140,11 +140,11 @@ async function handleLighthouseRequest(url, options) {
 
   try {
     const lighthouseRunner = options.lighthouseRunner ?? defaultRunLighthouse;
-    const lighthouseResult = await withTimeout(
+    const lighthouseResult = stripLighthouseScreenshots(await withTimeout(
       lighthouseRunner(url, { timeoutMs }),
       timeoutMs,
       'lighthouse timed out',
-    );
+    ));
     const durationMs = Date.now() - startedAt;
 
     log('lighthouse_success', { url, durationMs });
@@ -168,22 +168,30 @@ async function handleLighthouseRequest(url, options) {
 }
 
 async function defaultRunLighthouse(url, { timeoutMs }) {
-  const activeBrowser = await getBrowser();
+  const activeBrowser = await launchLighthouseBrowser();
   browserRenders++;
 
-  const result = await lighthouse(url, {
-    logLevel: 'error',
-    maxWaitForLoad: timeoutMs,
-    onlyCategories: ['performance'],
-    output: 'json',
-    port: getBrowserDebugPort(activeBrowser),
-  });
+  try {
+    const result = await lighthouse(url, {
+      logLevel: 'error',
+      maxWaitForLoad: timeoutMs,
+      onlyCategories: ['performance'],
+      output: 'json',
+      port: getBrowserDebugPort(activeBrowser),
+    });
 
-  if (!result?.lhr) {
-    throw new Error('lighthouse did not return a result');
+    if (!result?.lhr) {
+      throw new Error('lighthouse did not return a result');
+    }
+
+    return result.lhr;
+  } finally {
+    try {
+      await activeBrowser.close();
+    } catch {
+      // Lighthouse gets a fresh browser, so close failures should not hide the result.
+    }
   }
-
-  return result.lhr;
 }
 
 async function defaultRenderUrl(url, { waitUntil, timeout, userAgent }) {
@@ -275,6 +283,37 @@ async function launchBrowser() {
   browserRenders = 0;
 
   return browser;
+}
+
+async function launchLighthouseBrowser() {
+  return puppeteer.launch({
+    args: lighthouseChromeArgs(),
+    executablePath: await chromium.executablePath(),
+    headless: 'shell',
+    ignoreHTTPSErrors: true,
+  });
+}
+
+function lighthouseChromeArgs() {
+  const skipped = new Set([
+    '--single-process',
+  ]);
+
+  return puppeteer
+    .defaultArgs({ args: chromium.args, headless: 'shell' })
+    .filter(arg => !skipped.has(arg));
+}
+
+function stripLighthouseScreenshots(lighthouseResult) {
+  if (!lighthouseResult || typeof lighthouseResult !== 'object') {
+    return lighthouseResult;
+  }
+
+  delete lighthouseResult.fullPageScreenshot;
+  delete lighthouseResult.audits?.['screenshot-thumbnails'];
+  delete lighthouseResult.audits?.['final-screenshot'];
+
+  return lighthouseResult;
 }
 
 function isAuthorized(headers, token) {

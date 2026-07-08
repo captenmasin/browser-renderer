@@ -140,6 +140,39 @@ test('returns lighthouse results', async () => {
   assert.equal(typeof body.durationMs, 'number');
 });
 
+test('strips lighthouse screenshot blobs from the response', async () => {
+  const response = await handleEvent(event({
+    path: '/lighthouse',
+    body: { url: 'https://example.com' },
+    headers: authHeaders(),
+  }), {
+    token,
+    lighthouseRunner: async () => ({
+      audits: {
+        'final-screenshot': { details: { data: 'data:image/webp;base64,huge' } },
+        'screenshot-thumbnails': { details: { items: [{ data: 'data:image/webp;base64,huge' }] } },
+      },
+      categories: {
+        performance: {
+          score: 0.91,
+        },
+      },
+      fullPageScreenshot: {
+        screenshot: {
+          data: 'data:image/webp;base64,huge',
+        },
+      },
+    }),
+  });
+  const body = JSON.parse(response.body);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.lighthouseResult.fullPageScreenshot, undefined);
+  assert.equal(body.lighthouseResult.audits['final-screenshot'], undefined);
+  assert.equal(body.lighthouseResult.audits['screenshot-thumbnails'], undefined);
+  assert.equal(body.lighthouseResult.categories.performance.score, 0.91);
+});
+
 test('returns safe json when lighthouse times out', async () => {
   const response = await handleEvent(event({
     path: '/lighthouse',

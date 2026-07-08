@@ -287,21 +287,21 @@ async function launchBrowser() {
 
 async function launchLighthouseBrowser() {
   return puppeteer.launch({
-    args: lighthouseChromeArgs(),
+    args: await lighthouseChromeArgs(),
     executablePath: await chromium.executablePath(),
     headless: 'shell',
     ignoreHTTPSErrors: true,
   });
 }
 
-function lighthouseChromeArgs() {
+async function lighthouseChromeArgs() {
   const skipped = new Set([
     '--single-process',
   ]);
 
-  return puppeteer
-    .defaultArgs({ args: chromium.args, headless: 'shell' })
-    .filter(arg => !skipped.has(arg));
+  const args = await puppeteer.defaultArgs({ args: chromium.args, headless: 'shell' });
+
+  return args.filter(arg => !skipped.has(arg));
 }
 
 function stripLighthouseScreenshots(lighthouseResult) {

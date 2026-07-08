@@ -1,6 +1,7 @@
 import { handler } from '../lambda/handler.js';
 
 const targetUrl = process.env.TARGET_URL ?? 'https://example.com';
+const path = process.env.SMOKE_PATH ?? '/content';
 const token = process.env.RENDER_TOKEN;
 
 if (!token) {
@@ -9,7 +10,7 @@ if (!token) {
 }
 
 const response = await handler({
-  rawPath: '/content',
+  rawPath: path,
   requestContext: {
     http: {
       method: 'POST',
@@ -29,8 +30,11 @@ const response = await handler({
 console.log(JSON.stringify({
   statusCode: response.statusCode,
   bodyBytes: Buffer.byteLength(response.body ?? '', 'utf8'),
-  contentBytes: response.statusCode === 200
+  contentBytes: response.statusCode === 200 && path === '/content'
     ? Buffer.byteLength(JSON.parse(response.body).content ?? '', 'utf8')
+    : undefined,
+  lighthouseScore: response.statusCode === 200 && path === '/lighthouse'
+    ? JSON.parse(response.body).lighthouseResult?.categories?.performance?.score
     : undefined,
   body: response.statusCode === 200 ? undefined : response.body,
 }, null, 2));

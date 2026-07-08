@@ -10,6 +10,7 @@ Globals:
       Variables:
         NODE_ENV: production
         NAV_TIMEOUT_MS: '30000'
+        LIGHTHOUSE_TIMEOUT_MS: '120000'
         MAX_RESPONSE_BYTES: '5500000'
 
 Parameters:
@@ -25,8 +26,8 @@ Parameters:
     Description: Lambda memory in MB. More memory gives Chromium more CPU and usually lowers render latency.
   FunctionTimeout:
     Type: Number
-    Default: 75
-    MinValue: 30
+    Default: 150
+    MinValue: 150
     MaxValue: 900
     Description: Lambda timeout in seconds.
   ProvisionedConcurrentExecutions:

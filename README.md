@@ -30,6 +30,23 @@ Body params:
 | `timeout`   | `30000`         | Navigation timeout (ms), capped at 60000                          |
 | `userAgent` | (none)          | Override the User-Agent header                                    |
 
+### `POST /lighthouse`
+
+Runs Lighthouse against a URL and returns the raw Lighthouse result.
+
+```bash
+curl -X POST http://localhost:3000/lighthouse \
+  -H "Authorization: Bearer $RENDER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+Response:
+
+```json
+{ "lighthouseResult": { "...": "..." }, "durationMs": 12345, "source": "browser-renderer" }
+```
+
 ### `GET /healthz`
 
 Returns 200 when browser is alive, 503 otherwise. Includes `active`, `renders`, `uptimeMs`.
@@ -52,6 +69,7 @@ See `.env.example`. Copy to `.env` before booting.
 | `RENDER_TOKEN`          | (unset)     | Bearer token. If unset, endpoint is open. **Always set in prod.** |
 | `MAX_CONCURRENT`        | `40`        | Hard cap on parallel renders                               |
 | `NAV_TIMEOUT_MS`        | `30000`     | Default goto timeout                                       |
+| `LIGHTHOUSE_TIMEOUT_MS` | `120000`    | Lighthouse runner timeout                                  |
 | `BROWSER_MAX_RENDERS`   | `1000`      | Recycle Chrome after N renders                             |
 | `BROWSER_MAX_AGE_MS`    | `3600000`   | Recycle Chrome after N ms uptime                           |
 

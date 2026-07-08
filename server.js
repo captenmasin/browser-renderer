@@ -1,5 +1,6 @@
 // server.js
 import express from 'express';
+import lighthouse from 'lighthouse';
 import puppeteer from 'puppeteer';
 
 const PORT = 3000;
@@ -7,6 +8,7 @@ const TOKEN = process.env.RENDER_TOKEN;
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '40');
 const NAV_TIMEOUT_MS = parseInt(process.env.NAV_TIMEOUT_MS || '30000');
 const PAGE_CONTENT_TIMEOUT_MS = 5_000;
+const LIGHTHOUSE_TIMEOUT_MS = normalizeLighthouseTimeout(process.env.LIGHTHOUSE_TIMEOUT_MS || '120000');
 const BROWSER_MAX_RENDERS = parseInt(process.env.BROWSER_MAX_RENDERS || '1000');
 const BROWSER_MAX_AGE_MS = parseInt(process.env.BROWSER_MAX_AGE_MS || `${60 * 60 * 1000}`);
 const DEFAULT_WAIT_UNTIL = 'networkidle2';
@@ -19,6 +21,7 @@ let active = 0;
 let browserUsers = 0;
 let shuttingDown = false;
 let browserLaunchPromise;
+let lighthouseActive = false;
 
 async function getBrowser() {
   const tooOld = browserStartedAt > 0 && (Date.now() - browserStartedAt > BROWSER_MAX_AGE_MS);
@@ -139,6 +142,55 @@ app.post('/content', async (req, res) => {
   }
 });
 
+app.post('/lighthouse', async (req, res) => {
+  if (shuttingDown) return res.status(503).json({ error: 'shutting down' });
+  if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  if (lighthouseActive) {
+    return res.status(503).json({ error: 'lighthouse already running', retryAfter: 1 });
+  }
+
+  const validatedUrl = validateUrl(req.body?.url);
+  if (!validatedUrl.ok) return res.status(400).json({ error: validatedUrl.error });
+
+  active++;
+  lighthouseActive = true;
+  let browserLease;
+  const startedAt = Date.now();
+
+  try {
+    browserLease = await getBrowser();
+    browserRenders++;
+
+    const result = await withTimeout(
+      lighthouse(validatedUrl.url, {
+        logLevel: 'error',
+        maxWaitForLoad: LIGHTHOUSE_TIMEOUT_MS,
+        onlyCategories: ['performance'],
+        output: 'json',
+        port: getBrowserDebugPort(browserLease.browser),
+      }),
+      LIGHTHOUSE_TIMEOUT_MS,
+      'lighthouse timed out',
+    );
+
+    if (!result?.lhr) throw new Error('lighthouse did not return a result');
+
+    res.json({
+      lighthouseResult: result.lhr,
+      durationMs: Date.now() - startedAt,
+      source: 'browser-renderer',
+    });
+  } catch (e) {
+    res.status(e?.code === 'ETIMEDOUT' ? 504 : 500).json({ error: String(e.message || e) });
+  } finally {
+    if (browserLease) browserLease.release();
+    lighthouseActive = false;
+    active--;
+  }
+});
+
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -181,4 +233,39 @@ function normalizeTimeout(timeout) {
   }
 
   return Math.min(parsed, 60_000);
+}
+
+function normalizeLighthouseTimeout(timeout) {
+  const parsed = Number.parseInt(timeout, 10);
+
+  return Number.isNaN(parsed) || parsed <= 0 ? 120_000 : parsed;
+}
+
+async function withTimeout(promise, timeoutMs, message) {
+  let timer;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(message);
+          error.code = 'ETIMEDOUT';
+          reject(error);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function getBrowserDebugPort(activeBrowser) {
+  const port = Number.parseInt(new URL(activeBrowser.wsEndpoint()).port, 10);
+
+  if (Number.isNaN(port)) {
+    throw new Error('browser debug port unavailable');
+  }
+
+  return port;
 }

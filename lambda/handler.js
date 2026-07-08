@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 import chromium from '@sparticuz/chromium';
+import lighthouse from 'lighthouse';
 import puppeteer from 'puppeteer-core';
 
 const DEFAULT_NAV_TIMEOUT_MS = 30_000;
@@ -9,6 +10,7 @@ const DEFAULT_WAIT_UNTIL = 'networkidle2';
 const DEFAULT_MAX_RESPONSE_BYTES = 5_500_000;
 const DEFAULT_BROWSER_MAX_RENDERS = 100;
 const DEFAULT_BROWSER_MAX_AGE_MS = 30 * 60 * 1000;
+const DEFAULT_LIGHTHOUSE_TIMEOUT_MS = 120_000;
 const DEFAULT_VIEWPORT = {
   deviceScaleFactor: 1,
   hasTouch: false,
@@ -23,6 +25,7 @@ let browser;
 let browserStartedAt = 0;
 let browserRenders = 0;
 let browserLaunchPromise;
+let lighthouseActive = false;
 
 export async function handler(event) {
   return handleEvent(event);
@@ -41,7 +44,7 @@ export async function handleEvent(event, options = {}) {
     });
   }
 
-  if (method !== 'POST' || path !== '/content') {
+  if (method !== 'POST' || !['/content', '/lighthouse'].includes(path)) {
     return jsonResponse(404, { error: 'not found' });
   }
 
@@ -68,6 +71,10 @@ export async function handleEvent(event, options = {}) {
   const validatedUrl = validateUrl(url);
   if (!validatedUrl.ok) {
     return jsonResponse(400, { error: validatedUrl.error });
+  }
+
+  if (path === '/lighthouse') {
+    return handleLighthouseRequest(validatedUrl.url, options);
   }
 
   const startedAt = Date.now();
@@ -118,6 +125,65 @@ export async function handleEvent(event, options = {}) {
 
     return jsonResponse(500, { error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+async function handleLighthouseRequest(url, options) {
+  if (lighthouseActive) {
+    return jsonResponse(503, { error: 'lighthouse already running', retryAfter: 1 });
+  }
+
+  const timeoutMs = normalizeLighthouseTimeout(
+    options.lighthouseTimeoutMs ?? process.env.LIGHTHOUSE_TIMEOUT_MS ?? `${DEFAULT_LIGHTHOUSE_TIMEOUT_MS}`,
+  );
+  const startedAt = Date.now();
+  lighthouseActive = true;
+
+  try {
+    const lighthouseRunner = options.lighthouseRunner ?? defaultRunLighthouse;
+    const lighthouseResult = await withTimeout(
+      lighthouseRunner(url, { timeoutMs }),
+      timeoutMs,
+      'lighthouse timed out',
+    );
+    const durationMs = Date.now() - startedAt;
+
+    log('lighthouse_success', { url, durationMs });
+
+    return jsonResponse(200, {
+      lighthouseResult,
+      durationMs,
+      source: 'browser-renderer',
+    });
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    const message = error instanceof Error ? error.message : String(error);
+    const statusCode = error?.code === 'ETIMEDOUT' ? 504 : 500;
+
+    log('lighthouse_failed', { url, error: message, durationMs });
+
+    return jsonResponse(statusCode, { error: message });
+  } finally {
+    lighthouseActive = false;
+  }
+}
+
+async function defaultRunLighthouse(url, { timeoutMs }) {
+  const activeBrowser = await getBrowser();
+  browserRenders++;
+
+  const result = await lighthouse(url, {
+    logLevel: 'error',
+    maxWaitForLoad: timeoutMs,
+    onlyCategories: ['performance'],
+    output: 'json',
+    port: getBrowserDebugPort(activeBrowser),
+  });
+
+  if (!result?.lhr) {
+    throw new Error('lighthouse did not return a result');
+  }
+
+  return result.lhr;
 }
 
 async function defaultRenderUrl(url, { waitUntil, timeout, userAgent }) {
@@ -275,6 +341,41 @@ function normalizeTimeout(timeout) {
   }
 
   return Math.min(parsed, 60_000);
+}
+
+function normalizeLighthouseTimeout(timeout) {
+  const parsed = Number.parseInt(timeout, 10);
+
+  return Number.isNaN(parsed) || parsed <= 0 ? DEFAULT_LIGHTHOUSE_TIMEOUT_MS : parsed;
+}
+
+async function withTimeout(promise, timeoutMs, message) {
+  let timer;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(message);
+          error.code = 'ETIMEDOUT';
+          reject(error);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function getBrowserDebugPort(activeBrowser) {
+  const port = Number.parseInt(new URL(activeBrowser.wsEndpoint()).port, 10);
+
+  if (Number.isNaN(port)) {
+    throw new Error('browser debug port unavailable');
+  }
+
+  return port;
 }
 
 function getMethod(event) {

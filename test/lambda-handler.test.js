@@ -37,6 +37,19 @@ test('rejects requests without the bearer token', async () => {
   assert.deepEqual(JSON.parse(response.body), { error: 'unauthorized' });
 });
 
+test('rejects lighthouse requests without the bearer token', async () => {
+  const response = await handleEvent(event({
+    path: '/lighthouse',
+    body: { url: 'https://example.com' },
+  }), {
+    token,
+    lighthouseRunner: async () => ({ categories: {} }),
+  });
+
+  assert.equal(response.statusCode, 401);
+  assert.deepEqual(JSON.parse(response.body), { error: 'unauthorized' });
+});
+
 test('rejects requests when the renderer token is not configured', async () => {
   const previousToken = process.env.RENDER_TOKEN;
   delete process.env.RENDER_TOKEN;
@@ -82,6 +95,80 @@ test('rejects unsupported url protocols', async () => {
 
   assert.equal(response.statusCode, 400);
   assert.deepEqual(JSON.parse(response.body), { error: 'unsupported url protocol' });
+});
+
+test('rejects missing lighthouse urls', async () => {
+  const response = await handleEvent(event({
+    path: '/lighthouse',
+    body: {},
+    headers: authHeaders(),
+  }), {
+    token,
+    lighthouseRunner: async () => ({ categories: {} }),
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(JSON.parse(response.body), { error: 'url required' });
+});
+
+test('returns lighthouse results', async () => {
+  const lighthouseResult = {
+    categories: {
+      performance: {
+        score: 0.91,
+      },
+    },
+  };
+  const response = await handleEvent(event({
+    path: '/lighthouse',
+    body: { url: 'https://example.com' },
+    headers: authHeaders(),
+  }), {
+    token,
+    lighthouseRunner: async (url, options) => {
+      assert.equal(url, 'https://example.com/');
+      assert.deepEqual(options, { timeoutMs: 120_000 });
+
+      return lighthouseResult;
+    },
+  });
+  const body = JSON.parse(response.body);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(body.lighthouseResult, lighthouseResult);
+  assert.equal(body.source, 'browser-renderer');
+  assert.equal(typeof body.durationMs, 'number');
+});
+
+test('returns safe json when lighthouse times out', async () => {
+  const response = await handleEvent(event({
+    path: '/lighthouse',
+    body: { url: 'https://example.com' },
+    headers: authHeaders(),
+  }), {
+    token,
+    lighthouseTimeoutMs: 1,
+    lighthouseRunner: async () => new Promise(() => {}),
+  });
+
+  assert.equal(response.statusCode, 504);
+  assert.deepEqual(JSON.parse(response.body), { error: 'lighthouse timed out' });
+});
+
+test('returns safe json when lighthouse fails', async () => {
+  const response = await handleEvent(event({
+    path: '/lighthouse',
+    body: { url: 'https://example.com' },
+    headers: authHeaders(),
+  }), {
+    token,
+    lighthouseRunner: async () => {
+      throw new Error('lighthouse exploded');
+    },
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.deepEqual(JSON.parse(response.body), { error: 'lighthouse exploded' });
 });
 
 test('returns rendered content', async () => {

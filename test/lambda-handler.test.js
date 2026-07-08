@@ -127,7 +127,20 @@ test('returns lighthouse results', async () => {
     token,
     lighthouseRunner: async (url, options) => {
       assert.equal(url, 'https://example.com/');
-      assert.deepEqual(options, { timeoutMs: 120_000 });
+      assert.equal(options.timeoutMs, 120_000);
+      assert.deepEqual(options.settings, {
+        disableStorageReset: true,
+        emulatedUserAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+        formFactor: 'desktop',
+        screenEmulation: {
+          deviceScaleFactor: 1,
+          disabled: false,
+          height: 940,
+          mobile: false,
+          width: 1350,
+        },
+        throttlingMethod: 'provided',
+      });
 
       return lighthouseResult;
     },

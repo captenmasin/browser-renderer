@@ -11,6 +11,19 @@ const DEFAULT_MAX_RESPONSE_BYTES = 5_500_000;
 const DEFAULT_BROWSER_MAX_RENDERS = 100;
 const DEFAULT_BROWSER_MAX_AGE_MS = 30 * 60 * 1000;
 const DEFAULT_LIGHTHOUSE_TIMEOUT_MS = 120_000;
+const LIGHTHOUSE_DESKTOP_SETTINGS = {
+  disableStorageReset: true,
+  emulatedUserAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+  formFactor: 'desktop',
+  screenEmulation: {
+    deviceScaleFactor: 1,
+    disabled: false,
+    height: 940,
+    mobile: false,
+    width: 1350,
+  },
+  throttlingMethod: 'provided',
+};
 const DEFAULT_VIEWPORT = {
   deviceScaleFactor: 1,
   hasTouch: false,
@@ -141,7 +154,10 @@ async function handleLighthouseRequest(url, options) {
   try {
     const lighthouseRunner = options.lighthouseRunner ?? defaultRunLighthouse;
     const lighthouseResult = stripLighthouseScreenshots(await withTimeout(
-      lighthouseRunner(url, { timeoutMs }),
+      lighthouseRunner(url, {
+        settings: LIGHTHOUSE_DESKTOP_SETTINGS,
+        timeoutMs,
+      }),
       timeoutMs,
       'lighthouse timed out',
     ));
@@ -167,7 +183,7 @@ async function handleLighthouseRequest(url, options) {
   }
 }
 
-async function defaultRunLighthouse(url, { timeoutMs }) {
+async function defaultRunLighthouse(url, { settings, timeoutMs }) {
   const activeBrowser = await launchLighthouseBrowser();
   browserRenders++;
 
@@ -178,6 +194,7 @@ async function defaultRunLighthouse(url, { timeoutMs }) {
       onlyCategories: ['performance'],
       output: 'json',
       port: getBrowserDebugPort(activeBrowser),
+      ...settings,
     });
 
     if (!result?.lhr) {
